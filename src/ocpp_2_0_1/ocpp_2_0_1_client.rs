@@ -116,7 +116,7 @@ impl OCPP2_0_1Client {
         let disconnected_sender2 = disconnected_sender.clone();
 
         tokio::spawn(async move {
-            stream
+            if let Err(err) = stream
                 .map_err(|e| Box::<dyn std::error::Error + Send + Sync>::from(e))
                 .try_for_each(|message| {
                     let request_senders = request_senders2.clone();
@@ -150,12 +150,12 @@ impl OCPP2_0_1Client {
                                                                         let payload = serde_json::to_string(&RawOcpp2_0_1Error(4, call.1.to_string(), error.code().to_string(), error.description().to_string(), error.details().to_owned())).unwrap();
                                                                         let mut lock = sink.lock().await;
                                                                         if let Err(err) = lock.send(Message::Text(Utf8Bytes::from(payload))).await {
-                                                                            println!("Failed to send response: {:?}", err)
+                                                                            Err(format!("Failed to send response: {:?}", err))?
                                                                         }
                                                                     }
                                                                     Some(sender) => {
                                                                         if let Err(err) = sender.send(call).await {
-                                                                            println!("Error sending request: {:?}", err);
+                                                                            Err(format!("Error sending request: {:?}", err))?
                                                                         };
                                                                     }
                                                                 }
@@ -168,7 +168,7 @@ impl OCPP2_0_1Client {
                                                                 let mut lock = response_channels2.lock().await;
                                                                 if let Some(sender) = lock.remove(&Uuid::parse_str(&result.1)?) {
                                                                     if let Err(err) = sender.send(Ok(result.2)) {
-                                                                        println!("Error sending response: {:?}", err);
+                                                                        Err(format!("Error sending response: {:?}", err))?
                                                                     }
                                                                 }
                                                             },
@@ -179,23 +179,23 @@ impl OCPP2_0_1Client {
                                                                 let mut lock = response_channels2.lock().await;
                                                                 if let Some(sender) = lock.remove(&Uuid::parse_str(&error.1)?) {
                                                                     if let Err(err) = sender.send(Err(error.into())) {
-                                                                        println!("Error sending error: {:?}", err);
+                                                                        Err(format!("Error sending error: {:?}", err))?
                                                                     }
                                                                 }
                                                             },
-                                                            _ => println!("Unknown message type"),
+                                                            _ => Err("Unknown message type")?,
                                                         }
                                                     } else {
-                                                        println!("The message type has to be an integer, it cant have decimals")
+                                                        Err("The message type has to be an integer, it cant have decimals")?
                                                     }
                                                 } else {
-                                                    println!("The first item in the array was not a number")
+                                                    Err("The first item in the array was not a number")?
                                                 }
                                             } else {
-                                                println!("The root list was empty")
+                                                Err("The root list was empty")?
                                             }
                                         }
-                                        _ => println!("A message should be an array of items"),
+                                        _ => Err("A message should be an array of items")?,
                                     }
 
                                 }
@@ -204,7 +204,7 @@ impl OCPP2_0_1Client {
                                     if let Some(ping_sender) = lock.as_ref() {
                                         if ping_sender.receiver_count() > 0 {
                                             if let Err(err) = ping_sender.send(()) {
-                                                println!("Error sending websocket ping: {:?}", err);
+                                                Err(format!("Error sending websocket ping: {:?}", err))?
                                             };
                                         }
                                     }
@@ -213,7 +213,7 @@ impl OCPP2_0_1Client {
                                     let mut lock = pong_channels2.lock().await;
                                     if let Some(sender) = lock.pop_back() {
                                         if let Err(err) = sender.send(()) {
-                                            println!("Error sending websocket pong: {:?}", err);
+                                            Err(format!("Error sending websocket pong: {:?}", err))?
                                         }
                                     }
                                 }
@@ -222,7 +222,9 @@ impl OCPP2_0_1Client {
                             Ok(())
                         }
                     }
-                }).await?;
+                }).await {
+                    println!("{err}");
+                }
 
             // Drop the senders to stop the receiving tasks
             request_senders2.lock().await.clear();
