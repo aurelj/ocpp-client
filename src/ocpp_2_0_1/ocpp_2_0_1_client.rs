@@ -167,7 +167,9 @@ impl OCPP2_0_1Client {
                                                                     serde_json::from_str(&raw_payload).unwrap();
                                                                 let mut lock = response_channels2.lock().await;
                                                                 if let Some(sender) = lock.remove(&Uuid::parse_str(&result.1)?) {
-                                                                    sender.send(Ok(result.2)).unwrap();
+                                                                    if let Err(err) = sender.send(Ok(result.2)) {
+                                                                        println!("Error sending response: {:?}", err);
+                                                                    }
                                                                 }
                                                             },
                                                             // ERROR
@@ -176,7 +178,9 @@ impl OCPP2_0_1Client {
                                                                     serde_json::from_str(&raw_payload)?;
                                                                 let mut lock = response_channels2.lock().await;
                                                                 if let Some(sender) = lock.remove(&Uuid::parse_str(&error.1)?) {
-                                                                    sender.send(Err(error.into())).unwrap();
+                                                                    if let Err(err) = sender.send(Err(error.into())) {
+                                                                        println!("Error sending error: {:?}", err);
+                                                                    }
                                                                 }
                                                             },
                                                             _ => println!("Unknown message type"),
@@ -208,7 +212,9 @@ impl OCPP2_0_1Client {
                                 Message::Pong(_) => {
                                     let mut lock = pong_channels2.lock().await;
                                     if let Some(sender) = lock.pop_back() {
-                                        sender.send(()).unwrap();
+                                        if let Err(err) = sender.send(()) {
+                                            println!("Error sending websocket pong: {:?}", err);
+                                        }
                                     }
                                 }
                                 _ => {}
